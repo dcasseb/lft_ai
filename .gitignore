@@ -1,31 +1,139 @@
-profissa_lft/Backups
-profissa_lft/Cache
-profissa_lft/CachedData
-profissa_lft/CachedProfilesData/
-profissa_lft/Code Cache/
-profissa_lft/Cookies
-profissa_lft/Cookies-journal
-profissa_lft/Crashpad/
-profissa_lft/Dictionaries/
-profissa_lft/GPUCache/
-profissa_lft/Local Storage/
-profissa_lft/Network Persistent State
-profissa_lft/Preferences
-profissa_lft/Session Storage/
-profissa_lft/TransportSecurity
-profissa_lft/User/
-profissa_lft/languagepacks.json
-profissa_lft/logs/
-profissa_lft/machineid
-demonstration/__pycache__
-experiment/__pycache__
-profissa_lft/__pycache__
-experiment/results/*
-results/data/*
-results/__pycache__
-containernet/
+# Virtual Environment
+lft_venv/
+venv/
+env/
+.venv/
 
-build
-dist
-profissa_lft.egg-info
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# celery beat schedule file
+celerybeat-schedule
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Generated files
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Model files (if downloaded locally)
+*.bin
+*.safetensors
+*.ckpt
+*.pth
+
+# Temporary files
+*.tmp
+*.temp

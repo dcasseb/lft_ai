@@ -1,0 +1,18 @@
+# AI-specific dependencies for LFT
+# These are additional dependencies required for AI topology generation
+
+# Core AI dependencies
+requests>=2.25.0
+transformers>=4.30.0
+torch>=2.0.0
+accelerate>=0.20.0
+
+# Optional: For better performance with local models
+# bitsandbytes>=0.41.0  # For model quantization
+# scipy>=1.9.0          # For scientific computing
+# numpy>=1.21.0         # For numerical operations
+
+# Development dependencies (optional)
+# pytest>=7.0.0         # For testing
+# black>=22.0.0         # For code formatting
+# flake8>=5.0.0         # For linting 

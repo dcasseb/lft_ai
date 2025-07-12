@@ -29,3 +29,7 @@ class NodeInstantiationFailed(Exception):
 # Brief: This exception is related to the creation of a 
 class InvalidNodeName(Exception):
     pass
+
+# Brief: General LFT exception for AI and other features
+class LFTException(Exception):
+    pass

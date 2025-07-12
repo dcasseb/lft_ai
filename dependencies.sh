@@ -17,3 +17,10 @@ do
 done
 
 pip install pandas
+
+# Install AI dependencies (optional)
+echo "Installing AI dependencies..."
+pip install requests>=2.25.0 transformers>=4.30.0 torch>=2.0.0 accelerate>=0.20.0
+
+echo "Dependencies installation completed!"
+echo "For AI features, make sure to set HF_TOKEN environment variable for Hugging Face API access."
