@@ -43,7 +43,7 @@ class AITopologyGenerator:
         self.model_name = model_name
         self.fallback_model = fallback_model
         self.use_hf_api = use_hf_api
-        self.api_token = api_token or os.getenv('HF_TOKEN')
+        self.api_token = api_token or os.getenv('HF_TOKEN') or os.getenv('HUGGING_FACE_HUB_TOKEN')
         
         if use_hf_api and not self.api_token:
             raise LFTException("Hugging Face API token required when use_hf_api=True. "
