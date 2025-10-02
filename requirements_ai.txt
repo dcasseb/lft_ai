@@ -1,6 +1,3 @@
-# AI-specific dependencies for LFT
-# These are additional dependencies required for AI topology generation
-
 # Core AI dependencies
 requests>=2.25.0
 transformers>=4.30.0

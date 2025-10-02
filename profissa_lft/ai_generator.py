@@ -1,103 +1,160 @@
-# Copyright (C) 2024 Alexandre Mitsuru Kaihara
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License as published by
-#    the Free Software Foundation, either version 3 of the License, or
-#    (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS for a PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#!/usr/bin/env python3
+"""
+LFT AI-Powered Topology Generator - Modern Implementation
+Uses robust open-source models with 7B+ parameters for reliable topology generation.
+"""
 
 import os
-import json
+import sys
 import logging
-from typing import Dict, List, Optional, Tuple
-from pathlib import Path
-import requests
-from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
+from typing import Optional, List, Dict, Any
+from pathlib import Path
+from transformers import (
+    AutoTokenizer, 
+    AutoModelForCausalLM,
+    BitsAndBytesConfig,
+    GenerationConfig
+)
+from accelerate import infer_auto_device_map
+
 from .exceptions import LFTException
 
-class AITopologyGenerator:
+class ModernAITopologyGenerator:
     """
-    AI-powered topology generator using DeepSeek-R1-0528.
-    This class provides functionality to generate LFT network topologies from natural language descriptions.
+    Modern AI topology generator using robust open-source models.
+    Supports both local inference and Hugging Face API.
     """
     
-    def __init__(self, model_name: str = "deepseek-ai/DeepSeek-R1-0528", 
-                 use_hf_api: bool = True, api_token: Optional[str] = None, 
-                 fallback_model: str = "microsoft/DialoGPT-medium"):
+    # Modern, reliable models with 7B+ parameters (fully open source)
+    SUPPORTED_MODELS = {
+        "deepseek-r1": "deepseek-ai/DeepSeek-R1-0528",
+        "phi3-mini": "microsoft/Phi-3-mini-4k-instruct",
+        "qwen2-7b": "Qwen/Qwen2-7B-Instruct",
+        "gemma2-9b": "google/gemma2-9b-it",
+        "stable-code-3b": "stabilityai/stable-code-3b",
+        "code-llama-7b": "codellama/CodeLlama-7b-Instruct-hf",
+        "deepseek-coder-7b": "deepseek-ai/deepseek-coder-7b-instruct",
+        "stable-code-3b-instruct": "stabilityai/stable-code-3b",
+        "phi3": "microsoft/Phi-3-mini-4k-instruct"
+    }
+    
+    def __init__(
+        self, 
+        model_name: str = "deepseek-r1",
+        use_hf_api: bool = False,
+        api_token: Optional[str] = None,
+        device: str = "auto",
+        load_in_8bit: bool = True,
+        load_in_4bit: bool = False
+    ):
         """
-        Initialize the AI topology generator.
+        Initialize the modern AI topology generator.
         
         Args:
-            model_name: Hugging Face model identifier
-            use_hf_api: Whether to use Hugging Face API (True) or local model (False)
-            api_token: Hugging Face API token (required if use_hf_api=True)
+            model_name: Model identifier from SUPPORTED_MODELS
+            use_hf_api: Whether to use Hugging Face API
+            api_token: Hugging Face API token
+            device: Device to use ('auto', 'cpu', 'cuda')
+            load_in_8bit: Use 8-bit quantization for memory efficiency
+            load_in_4bit: Use 4-bit quantization (higher memory efficiency)
         """
         self.model_name = model_name
-        self.fallback_model = fallback_model
         self.use_hf_api = use_hf_api
-        self.api_token = api_token or os.getenv('HF_TOKEN') or os.getenv('HUGGING_FACE_HUB_TOKEN')
+        self.api_token = api_token or os.getenv('HF_TOKEN')
+        self.device = device
+        self.load_in_8bit = load_in_8bit
+        self.load_in_4bit = load_in_4bit
+        
+        # Setup logging
+        self.logger = logging.getLogger(__name__)
         
         if use_hf_api and not self.api_token:
-            raise LFTException("Hugging Face API token required when use_hf_api=True. "
-                              "Set HF_TOKEN environment variable or pass api_token parameter.")
+            raise LFTException(
+                "Hugging Face API token required when use_hf_api=True. "
+                "Set HF_TOKEN environment variable or pass api_token parameter."
+            )
         
-        self.logger = logging.getLogger(__name__)
-        self._setup_model()
+        # Initialize model components
+        self.model = None
+        self.tokenizer = None
+        self.generation_config = None
         
-    def _setup_model(self):
-        """Setup the model and tokenizer."""
+        if not use_hf_api:
+            self._setup_local_model()
+    
+    def _setup_local_model(self):
+        """Setup the local model with proper configuration."""
         try:
-            if self.use_hf_api:
-                self.logger.info("Using Hugging Face API for model inference")
-                self.model = None
-                self.tokenizer = None
+            # Get the actual model path
+            if self.model_name in self.SUPPORTED_MODELS:
+                model_path = self.SUPPORTED_MODELS[self.model_name]
             else:
-                self.logger.info(f"Loading local model: {self.model_name}")
-                self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-                
-                # Check if CUDA is available
-                if torch.cuda.is_available():
-                    self.logger.info("CUDA available, using GPU")
-                    self.model = AutoModelForCausalLM.from_pretrained(
-                        self.model_name,
-                        torch_dtype=torch.float16,
-                        device_map="auto",
-                        trust_remote_code=True
-                    )
-                else:
-                    self.logger.info("CUDA not available, using CPU with float32")
-                    self.model = AutoModelForCausalLM.from_pretrained(
-                        self.model_name,
-                        torch_dtype=torch.float32,
-                        device_map="cpu",
-                        trust_remote_code=True,
-                        low_cpu_mem_usage=True
-                    )
+                model_path = self.model_name
+            
+            self.logger.info(f"Loading model: {model_path}")
+            
+            # Configure quantization
+            quantization_config = None
+            if self.load_in_4bit:
+                quantization_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_compute_dtype=torch.float16,
+                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_quant_type="nf4"
+                )
+            elif self.load_in_8bit:
+                quantization_config = BitsAndBytesConfig(
+                    load_in_8bit=True
+                )
+            
+            # Load tokenizer
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                model_path,
+                trust_remote_code=True,
+                use_fast=True
+            )
+            
+            # Add padding token if missing
+            if self.tokenizer.pad_token is None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token
+            
+            # Load model
+            self.model = AutoModelForCausalLM.from_pretrained(
+                model_path,
+                quantization_config=quantization_config,
+                torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                device_map=self.device,
+                trust_remote_code=True,
+                low_cpu_mem_usage=True
+            )
+            
+            # Setup generation config
+            self.generation_config = GenerationConfig(
+                max_new_tokens=2048,
+                temperature=0.7,
+                top_p=0.9,
+                do_sample=True,
+                pad_token_id=self.tokenizer.pad_token_id,
+                eos_token_id=self.tokenizer.eos_token_id,
+                repetition_penalty=1.1
+            )
+            
+            self.logger.info(f"Model loaded successfully: {model_path}")
+            
         except Exception as e:
-            if not self.use_hf_api and self.model_name != self.fallback_model:
-                self.logger.warning(f"Failed to load {self.model_name}, trying fallback model: {self.fallback_model}")
-                self.model_name = self.fallback_model
-                self._setup_model()
-            else:
-                raise LFTException(f"Failed to setup model: {str(e)}")
+            raise LFTException(f"Failed to setup local model: {str(e)}")
     
     def _get_system_prompt(self) -> str:
-        """Get the system prompt for LFT topology generation."""
-        return """<|im_start|>system
-You are an expert network engineer and Python developer specializing in the Lightweight Fog Testbed (LFT) framework. Your task is to generate Python code that creates network topologies using LFT components.
+        """Get the optimized system prompt for LFT topology generation."""
+        return """You are an expert network engineer specializing in the Lightweight Fog Testbed (LFT) framework. 
 
-LFT Components Available:
+Generate Python code to create network topologies using LFT components.
+
+Available LFT Components:
 - Host: Network hosts with IP configuration
 - Switch: OpenFlow switches for SDN
-- Controller: SDN controllers (e.g., OpenDaylight, ONOS)
+- Controller: SDN controllers (OpenDaylight, ONOS)
 - UE: User Equipment for wireless networks
 - EPC: Evolved Packet Core for 4G networks
 - EnB: eNodeB for 4G base stations
@@ -107,241 +164,204 @@ Key LFT Methods:
 - connect(node, interface1, interface2): Connect two nodes
 - setIp(ip, prefix, interface): Configure IP address
 - setDefaultGateway(gateway, interface): Set default gateway
-- connectToInternet(gateway_ip, prefix, interface1, interface2): Connect to internet
 
-Generate ONLY the Python code without any explanations or markdown formatting. The code should be complete and executable.
-<|im_end|>"""
+IMPORTANT: Generate ONLY executable Python code. Start with 'from profissa_lft import *' and create a complete, runnable topology. No explanations, no markdown, just Python code."""
     
-    def _get_example_prompts(self) -> List[Dict[str, str]]:
-        """Get example prompts for few-shot learning."""
-        return [
-            {
-                "user": "Create a simple SDN topology with 2 hosts connected to a switch",
-                "assistant": """from profissa_lft.host import Host
-from profissa_lft.switch import Switch
-
-h1 = Host('h1')
-h2 = Host('h2')
-s1 = Switch('s1')
-
-h1.instantiate()
-h2.instantiate()
-s1.instantiate()
-
-h1.connect(s1, "h1s1", "s1h1")
-h2.connect(s1, "h2s1", "s1h2")
-
-h1.setIp('10.0.0.1', 24, "h1s1")
-h2.setIp('10.0.0.2', 24, "h2s1")
-
-s1.connectToInternet('10.0.0.4', 24, "s1host", "hosts1")
-
-h1.setDefaultGateway('10.0.0.4', "h1s1")
-h2.setDefaultGateway('10.0.0.4', "h2s1")"""
-            },
-            {
-                "user": "Create a 4G wireless network with 2 UEs connected to an eNodeB and EPC",
-                "assistant": """from profissa_lft.ue import UE
-from profissa_lft.enb import EnB
-from profissa_lft.epc import EPC
-
-ue1 = UE('ue1')
-ue2 = UE('ue2')
-enb = EnB('enb1')
-epc = EPC('epc1')
-
-ue1.instantiate()
-ue2.instantiate()
-enb.instantiate()
-epc.instantiate()
-
-ue1.connect(enb, "ue1enb", "enblue1")
-ue2.connect(enb, "ue2enb", "enblue2")
-enb.connect(epc, "enbs1", "s1enb")
-
-ue1.setIp('192.168.1.10', 24, "ue1enb")
-ue2.setIp('192.168.1.11', 24, "ue2enb")
-enb.setIp('192.168.1.1', 24, "enblue1")
-enb.setIp('192.168.1.2', 24, "enblue2")
-enb.setIp('10.0.0.1', 24, "enbs1")
-epc.setIp('10.0.0.2', 24, "s1enb")
-
-epc.connectToInternet('10.0.0.4', 24, "epchost", "hostepc")
-
-ue1.setDefaultGateway('192.168.1.1', "ue1enb")
-ue2.setDefaultGateway('192.168.1.1', "ue2enb")
-enb.setDefaultGateway('10.0.0.2', "enbs1")
-epc.setDefaultGateway('10.0.0.4', "epchost")"""
-            }
-        ]
-    
-    def _generate_prompt(self, user_description: str) -> str:
-        """Generate the complete prompt for the model."""
+    def _format_prompt(self, user_prompt: str) -> str:
+        """Format the prompt for the model."""
         system_prompt = self._get_system_prompt()
-        
-        prompt = f"{system_prompt}<|im_start|>user\n{user_description}<|im_end|>\n<|im_start|>assistant\n"
-        
-        return prompt
+        return f"{system_prompt}\n\nUser request: {user_prompt}\n\nPython code:\n"
+    
+    def _call_local_model(self, prompt: str) -> str:
+        """Call local model for inference."""
+        try:
+            # Format the prompt
+            formatted_prompt = self._format_prompt(prompt)
+            
+            # Tokenize input
+            inputs = self.tokenizer(
+                formatted_prompt, 
+                return_tensors="pt", 
+                truncation=True,
+                max_length=4096
+            )
+            
+            # Move to device
+            if self.device == "auto" and torch.cuda.is_available():
+                inputs = {k: v.cuda() for k, v in inputs.items()}
+            
+            # Try different generation approaches
+            try:
+                # Method 1: Standard generation
+                with torch.no_grad():
+                    outputs = self.model.generate(
+                        **inputs,
+                        max_new_tokens=2048,
+                        temperature=0.7,
+                        top_p=0.9,
+                        do_sample=True,
+                        pad_token_id=self.tokenizer.pad_token_id,
+                        eos_token_id=self.tokenizer.eos_token_id,
+                        repetition_penalty=1.1
+                    )
+            except Exception as gen_error:
+                # Method 2: Fallback with simpler parameters
+                self.logger.warning(f"Standard generation failed: {gen_error}, trying fallback...")
+                with torch.no_grad():
+                    outputs = self.model.generate(
+                        **inputs,
+                        max_new_tokens=1024,
+                        do_sample=False,
+                        num_beams=1
+                    )
+            
+            # Decode response
+            generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            
+            # Extract only the generated part (after the prompt)
+            response_start = generated_text.find("Python code:")
+            if response_start != -1:
+                response_start += len("Python code:")
+                generated_text = generated_text[response_start:]
+            
+            # Clean up the response
+            generated_text = generated_text.strip()
+            
+            return generated_text
+            
+        except Exception as e:
+            raise LFTException(f"Local model inference failed: {str(e)}")
     
     def _call_hf_api(self, prompt: str) -> str:
-        """Call Hugging Face API for model inference."""
+        """Call Hugging Face API for inference."""
         try:
+            import requests
+            
+            # Format the prompt
+            formatted_prompt = self._format_prompt(prompt)
+            
+            # API endpoint
+            api_url = f"https://api-inference.huggingface.co/models/{self.SUPPORTED_MODELS[self.model_name]}"
+            
             headers = {
                 "Authorization": f"Bearer {self.api_token}",
                 "Content-Type": "application/json"
             }
             
             payload = {
-                "inputs": prompt,
+                "inputs": formatted_prompt,
                 "parameters": {
-                    "max_new_tokens": 1024,
-                    "temperature": 0.1,
-                    "top_p": 0.95,
+                    "max_new_tokens": 2048,
+                    "temperature": 0.7,
+                    "top_p": 0.9,
                     "do_sample": True,
-                    "return_full_text": False
+                    "repetition_penalty": 1.1
                 }
             }
             
-            response = requests.post(
-                f"https://api-inference.huggingface.co/models/{self.model_name}",
-                headers=headers,
-                json=payload,
-                timeout=60
-            )
+            response = requests.post(api_url, headers=headers, json=payload)
+            response.raise_for_status()
             
-            if response.status_code == 200:
-                result = response.json()
-                if isinstance(result, list) and len(result) > 0:
-                    return result[0].get('generated_text', '')
-                return result.get('generated_text', '')
+            result = response.json()
+            if isinstance(result, list) and len(result) > 0:
+                return result[0].get("generated_text", "")
             else:
-                raise LFTException(f"API call failed with status {response.status_code}: {response.text}")
+                return result.get("generated_text", "")
                 
-        except requests.exceptions.RequestException as e:
-            raise LFTException(f"API request failed: {str(e)}")
-    
-    def _call_local_model(self, prompt: str) -> str:
-        """Call local model for inference."""
-        try:
-            inputs = self.tokenizer(prompt, return_tensors="pt")
-            
-            with torch.no_grad():
-                outputs = self.model.generate(
-                    **inputs,
-                    max_new_tokens=1024,
-                    temperature=0.1,
-                    top_p=0.95,
-                    do_sample=True,
-                    pad_token_id=self.tokenizer.eos_token_id,
-                    eos_token_id=self.tokenizer.encode("<|im_end|>", add_special_tokens=False)[0]
-                )
-            
-            generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-            # Extract only the generated part (after the prompt)
-            return generated_text[len(prompt):].strip()
-            
         except Exception as e:
-            raise LFTException(f"Local model inference failed: {str(e)}")
+            raise LFTException(f"Hugging Face API call failed: {str(e)}")
     
-    def generate_topology(self, description: str) -> str:
+    def _validate_generated_code(self, code: str) -> bool:
+        """Validate that the generated code contains LFT components."""
+        # Check for basic Python code structure
+        if not code or len(code.strip()) < 50:
+            return False
+        
+        # Check for LFT imports or components
+        lft_indicators = [
+            "from profissa_lft",
+            "lft.",
+            "Host(",
+            "Switch(",
+            "Controller(",
+            "UE(",
+            "EPC(",
+            "EnB("
+        ]
+        
+        # At least one LFT indicator should be present
+        return any(indicator in code for indicator in lft_indicators)
+    
+    def _clean_generated_code(self, code: str) -> str:
+        """Clean and format the generated code."""
+        # Remove markdown formatting
+        code = code.replace("```python", "").replace("```", "")
+        
+        # Remove leading/trailing whitespace
+        code = code.strip()
+        
+        # Ensure proper imports
+        if "from profissa_lft" not in code:
+            code = "from profissa_lft import *\n\n" + code
+        
+        return code
+    
+    def generate_topology(self, prompt: str, output_file: Optional[str] = None) -> str:
         """
-        Generate LFT topology code from natural language description.
+        Generate a network topology based on the prompt.
         
         Args:
-            description: Natural language description of the desired topology
+            prompt: Description of the desired topology
+            output_file: Optional file to save the generated code
             
         Returns:
-            Generated Python code for the LFT topology
+            Generated Python code for the topology
         """
         try:
-            self.logger.info(f"Generating topology for description: {description}")
+            self.logger.info(f"Generating topology for prompt: {prompt}")
             
-            prompt = self._generate_prompt(description)
-            
+            # Generate code
             if self.use_hf_api:
                 generated_code = self._call_hf_api(prompt)
             else:
                 generated_code = self._call_local_model(prompt)
             
-            # Clean up the generated code
-            generated_code = self._clean_generated_code(generated_code)
+            # Validate the generated code
+            if not self._validate_generated_code(generated_code):
+                raise LFTException("Generated code does not contain valid LFT components")
             
-            self.logger.info("Topology generation completed successfully")
-            return generated_code
+            # Clean the code
+            cleaned_code = self._clean_generated_code(generated_code)
+            
+            # Save to file if specified
+            if output_file:
+                with open(output_file, 'w') as f:
+                    f.write(cleaned_code)
+                self.logger.info(f"Topology saved to: {output_file}")
+            
+            return cleaned_code
             
         except Exception as e:
-            self.logger.error(f"Topology generation failed: {str(e)}")
             raise LFTException(f"Failed to generate topology: {str(e)}")
     
-    def _clean_generated_code(self, code: str) -> str:
-        """Clean and validate the generated code."""
-        # Remove any markdown formatting
-        if code.startswith('```python'):
-            code = code[9:]
-        if code.endswith('```'):
-            code = code[:-3]
-        
-        # Remove leading/trailing whitespace
-        code = code.strip()
-        
-        # Basic validation - ensure it contains LFT imports
-        if 'from profissa_lft' not in code:
-            raise LFTException("Generated code does not contain LFT imports")
-        
-        return code
+    def list_available_models(self) -> List[str]:
+        """List all available models."""
+        return list(self.SUPPORTED_MODELS.keys())
     
-    def generate_and_save(self, description: str, output_file: str) -> str:
-        """
-        Generate topology code and save it to a file.
+    def get_model_info(self) -> Dict[str, Any]:
+        """Get information about the current model."""
+        if not self.model:
+            return {"status": "No model loaded"}
         
-        Args:
-            description: Natural language description of the desired topology
-            output_file: Path to save the generated code
-            
-        Returns:
-            Path to the saved file
-        """
-        try:
-            generated_code = self.generate_topology(description)
-            
-            # Ensure output directory exists
-            output_path = Path(output_file)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Save the generated code
-            with open(output_path, 'w') as f:
-                f.write(generated_code)
-            
-            self.logger.info(f"Generated topology saved to: {output_file}")
-            return output_file
-            
-        except Exception as e:
-            self.logger.error(f"Failed to save generated topology: {str(e)}")
-            raise LFTException(f"Failed to save topology: {str(e)}")
-    
-    def validate_topology(self, code: str) -> bool:
-        """
-        Validate the generated topology code.
+        info = {
+            "model_name": self.model_name,
+            "model_type": type(self.model).__name__,
+            "device": str(next(self.model.parameters()).device),
+            "dtype": str(next(self.model.parameters()).dtype),
+            "parameters": sum(p.numel() for p in self.model.parameters())
+        }
         
-        Args:
-            code: Python code to validate
-            
-        Returns:
-            True if valid, False otherwise
-        """
-        try:
-            # Basic syntax check
-            compile(code, '<string>', 'exec')
-            
-            # Check for required LFT components
-            required_imports = ['from profissa_lft']
-            for required in required_imports:
-                if required not in code:
-                    return False
-            
-            return True
-            
-        except SyntaxError:
-            return False
-        except Exception:
-            return False 
+        return info
+
+# Backward compatibility alias
+AITopologyGenerator = ModernAITopologyGenerator

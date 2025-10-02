@@ -20,6 +20,6 @@ from .switch import Switch
 from .ue import UE
 from .epc import EPC
 from .enb import EnB
-from .ai_generator import AITopologyGenerator
+from .ai_generator import AITopologyGenerator, ModernAITopologyGenerator
 
-__all__ = [Node, Host, Controller, Switch, UE, EPC, EnB, AITopologyGenerator]
+__all__ = [Node, Host, Controller, Switch, UE, EPC, EnB, AITopologyGenerator, ModernAITopologyGenerator]

@@ -80,7 +80,11 @@ Examples:
         parser.print_help()
         return 1
     
-    setup_logging(args.verbose)
+    # Setup logging only if verbose is available
+    if hasattr(args, 'verbose'):
+        setup_logging(args.verbose)
+    else:
+        setup_logging(False)
     logger = logging.getLogger(__name__)
     
     try:
