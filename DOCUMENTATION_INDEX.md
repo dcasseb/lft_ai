@@ -1,7 +1,7 @@
 # LFT AI Documentation Index
 ## Your Complete Guide to Using LLMs with Lightweight Fog Testbed
 
-Welcome! This directory contains comprehensive documentation for using Large Language Models (LLMs) with the Lightweight Fog Testbed (LFT) framework.
+This directory contains comprehensive documentation for using Large Language Models (LLMs) with the Lightweight Fog Testbed (LFT) framework.
 
 ---
 
@@ -41,9 +41,19 @@ Welcome! This directory contains comprehensive documentation for using Large Lan
 
 **Estimated time:** 30 seconds per example
 
+### For Network Visualization 📊 ✨ NEW!
+
+**[VISUALIZER_GUIDE.md](VISUALIZER_GUIDE.md)** - Real-time network visualization
+- Live topology graphs
+- CPU and memory monitoring
+- Traffic flow visualization
+- Quick start: `python visualize_network.py`
+
+**Estimated time:** 2 minutes to start visualizing!
+
 ---
 
-## 🚀 Quick Start Guide
+## Quick Start Guide
 
 ### Step 1: Activate Environment (10 seconds)
 ```bash
@@ -91,7 +101,7 @@ less LLM_INTEGRATION_GUIDE.md
 
 ---
 
-## 📋 What Each Document Covers
+## What Each Document Covers
 
 ### QUICK_START_LLM.md
 ✓ Installation instructions  
@@ -127,7 +137,7 @@ less LLM_INTEGRATION_GUIDE.md
 
 ---
 
-## 🎯 Use Case Guide
+## Use Case Guide
 
 ### "I'm completely new to LFT AI"
 1. Read: `QUICK_START_LLM.md` (5 minutes)
@@ -158,7 +168,7 @@ less LLM_INTEGRATION_GUIDE.md
 
 ---
 
-## 🏗️ Document Structure Comparison
+## Document Structure Comparison
 
 | Feature | Quick Start | Complete Guide | Examples |
 |---------|-------------|----------------|----------|
@@ -171,7 +181,7 @@ less LLM_INTEGRATION_GUIDE.md
 
 ---
 
-## 🔑 Key Concepts Covered
+## Key Concepts Covered
 
 ### Models Available
 - **DeepSeek-R1** (default): Best quality, advanced reasoning
@@ -205,7 +215,7 @@ less LLM_INTEGRATION_GUIDE.md
 
 ---
 
-## 💡 Tips for Success
+## Tips for Success
 
 ### Writing Good Prompts
 ```python
@@ -219,7 +229,7 @@ Create an SDN network with:
 - Instantiate all nodes
 """
 
-# ❌ BAD: Too vague
+# BAD: Too vague
 description = "Make a network"
 ```
 
@@ -229,14 +239,14 @@ description = "Make a network"
 - **Need code?** → Use Stable Code 3B
 
 ### Common Pitfalls
-1. ❌ Vague descriptions → ✅ Be specific
-2. ❌ Missing IPs → ✅ Specify all IPs
-3. ❌ No instantiation → ✅ Request .instantiate() calls
-4. ❌ Unclear topology → ✅ Describe all connections
+1. Vague descriptions → ✅ Be specific
+2. Missing IPs → ✅ Specify all IPs
+3. No instantiation → ✅ Request .instantiate() calls
+4. Unclear topology → ✅ Describe all connections
 
 ---
 
-## 📊 Document Statistics
+## Document Statistics
 
 | Document | Lines | Words | Characters |
 |----------|-------|-------|------------|
@@ -247,7 +257,7 @@ description = "Make a network"
 
 ---
 
-## 🎓 Learning Paths
+## Learning Paths
 
 ### Beginner Path (30 minutes)
 1. Read `QUICK_START_LLM.md` → 5 min
@@ -271,7 +281,7 @@ description = "Make a network"
 
 ---
 
-## 🔧 Prerequisites
+## Prerequisites
 
 ### System Requirements
 - **OS:** Linux (Ubuntu 20.04+)
@@ -293,7 +303,7 @@ description = "Make a network"
 
 ---
 
-## 🆘 Getting Help
+## Getting Help
 
 ### Built-in Resources
 1. **Troubleshooting Section:** `LLM_INTEGRATION_GUIDE.md`
@@ -314,7 +324,7 @@ logging.basicConfig(level=logging.DEBUG)
 
 ---
 
-## 📝 Quick Reference Commands
+## Quick Reference Commands
 
 ### Generate Topology
 ```bash
@@ -345,7 +355,7 @@ gen = ModernAITopologyGenerator(model_name="deepseek-r1")  # Better
 
 ---
 
-## 🌟 What Makes This Special
+## What Makes This Special
 
 ### Comprehensive Coverage
 ✓ Complete beginner to advanced path  
@@ -367,7 +377,7 @@ gen = ModernAITopologyGenerator(model_name="deepseek-r1")  # Better
 
 ---
 
-## 📚 Additional Resources
+## Additional Resources
 
 ### In This Repository
 - `AI_README.md` - Original AI feature documentation
@@ -383,7 +393,7 @@ gen = ModernAITopologyGenerator(model_name="deepseek-r1")  # Better
 
 ---
 
-## 🎉 You're Ready!
+## You're Ready!
 
 You now have access to:
 - ✅ Complete installation guide
@@ -410,7 +420,7 @@ python practical_examples.py
 
 ---
 
-**Happy topology generation!** 🚀
+**Happy topology generation!**
 
 *Documentation created: October 2, 2025*  
 *Default Model: DeepSeek-R1-0528*  

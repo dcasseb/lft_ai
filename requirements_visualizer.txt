@@ -1,0 +1,12 @@
+# Visualization dependencies for LFT
+# Install with: pip install -r requirements_visualizer.txt
+
+# Core visualization
+matplotlib>=3.5.0
+networkx>=2.6.0
+
+# Docker monitoring
+docker>=6.0.0
+
+# Optional: For better performance
+numpy>=1.21.0

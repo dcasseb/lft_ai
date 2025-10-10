@@ -194,13 +194,13 @@ This script uses DeepSeek-R1 to generate a simple network topology
 from profissa_lft import ModernAITopologyGenerator
 
 # Initialize the AI generator (uses DeepSeek-R1 by default)
-print("🤖 Initializing AI Generator (this may take 30-60 seconds)...")
+print("Initializing AI Generator (this may take 30-60 seconds)...")
 generator = ModernAITopologyGenerator(
     use_hf_api=False,  # Use local model
     load_in_8bit=True  # Memory efficient
 )
 
-print("✓ Generator ready!")
+print("Generator ready!")
 
 # Define what you want
 description = """
@@ -212,7 +212,7 @@ Create a simple SDN network with:
 """
 
 # Generate the topology code
-print("\n🎨 Generating topology...")
+print("\nGenerating topology...")
 print(f"Description: {description.strip()}")
 
 try:
@@ -230,7 +230,7 @@ try:
     print(generated_code[:500] + "..." if len(generated_code) > 500 else generated_code)
     
 except Exception as e:
-    print(f"✗ Error: {e}")
+    print(f"Error: {e}")
 ```
 
 Run it:
@@ -328,8 +328,8 @@ def generate_basic_sdn():
     with open(filename, 'w') as f:
         f.write(code)
     
-    print(f"✓ Generated: {filename}")
-    print(f"✓ Lines of code: {len(code.splitlines())}")
+    print(f"Generated: {filename}")
+    print(f"Lines of code: {len(code.splitlines())}")
     
     return filename
 
@@ -397,7 +397,7 @@ def generate_4g_network():
     with open(filename, 'w') as f:
         f.write(code)
     
-    print(f"✓ Generated: {filename}")
+    print(f"Generated: {filename}")
     return filename
 
 if __name__ == "__main__":
@@ -462,8 +462,8 @@ def generate_complex_network():
     with open(filename, 'w') as f:
         f.write(code)
     
-    print(f"✓ Generated: {filename}")
-    print(f"✓ Components: ~17 network nodes")
+    print(f"Generated: {filename}")
+    print(f"Components: ~17 network nodes")
     
     return filename
 
@@ -492,7 +492,7 @@ def iterative_generation():
     code_v1 = generator.generate_topology(desc_v1)
     with open("topology_v1.py", 'w') as f:
         f.write(code_v1)
-    print("✓ Saved: topology_v1.py\n")
+    print("Saved: topology_v1.py\n")
     
     # Version 2: Add details
     desc_v2 = """
@@ -506,7 +506,7 @@ def iterative_generation():
     code_v2 = generator.generate_topology(desc_v2)
     with open("topology_v2.py", 'w') as f:
         f.write(code_v2)
-    print("✓ Saved: topology_v2.py\n")
+    print("Saved: topology_v2.py\n")
     
     # Version 3: Add controller
     desc_v3 = """
@@ -522,7 +522,7 @@ def iterative_generation():
     code_v3 = generator.generate_topology(desc_v3)
     with open("topology_v3.py", 'w') as f:
         f.write(code_v3)
-    print("✓ Saved: topology_v3.py\n")
+    print("Saved: topology_v3.py\n")
     
     print("="*60)
     print("Comparison:")
@@ -638,7 +638,7 @@ def batch_generate_topologies():
                 "filename": filename,
                 "lines": len(code.splitlines())
             })
-            print(f"  ✓ Saved: {filename}")
+            print(f"  Saved: {filename}")
             
         except Exception as e:
             results.append({
@@ -674,20 +674,20 @@ code = generator.generate_topology(description)
 try:
     # Check syntax
     compile(code, '<string>', 'exec')
-    print("✓ Syntax valid")
+    print("Syntax valid")
     
     # Check for required imports
     if 'from profissa_lft' in code:
-        print("✓ Has LFT imports")
+        print("Has LFT imports")
     
     # Check for instantiation
     if '.instantiate()' in code:
-        print("✓ Includes instantiation")
+        print("Includes instantiation")
     
     # Save if valid
     with open('validated_topology.py', 'w') as f:
         f.write(code)
-    print("✓ Saved validated topology")
+    print("Saved validated topology")
     
 except SyntaxError as e:
     print(f"✗ Syntax error: {e}")
@@ -943,7 +943,7 @@ generator = ModernAITopologyGenerator()
 
 ### Writing Good Descriptions
 
-#### ✅ Good Description
+#### Good Description
 ```python
 description = """
 Create a Software-Defined Network with:
@@ -969,7 +969,7 @@ Configuration:
 - Clear topology structure
 - Explicit requirements
 
-#### ❌ Poor Description
+#### Poor Description
 ```python
 description = "Make a network"
 ```
@@ -1067,8 +1067,8 @@ def save_with_metadata(code, description, filename):
     with open(metadata_file, 'w') as f:
         json.dump(metadata, f, indent=2)
     
-    print(f"✓ Saved: {filename}")
-    print(f"✓ Metadata: {metadata_file}")
+    print(f"Saved: {filename}")
+    print(f"Metadata: {metadata_file}")
 ```
 
 ---
@@ -1105,7 +1105,7 @@ class LFTAIWorkflow:
         print("="*60)
         print("LFT AI Topology Generator - Complete Workflow")
         print("="*60)
-        print(f"\n📦 Initializing {model_name} model...")
+        print(f"\nInitializing {model_name} model...")
         print("   (This may take 30-60 seconds on first run)")
         
         start = time.time()
@@ -1115,11 +1115,11 @@ class LFTAIWorkflow:
         )
         elapsed = time.time() - start
         
-        print(f"✓ Generator ready in {elapsed:.1f} seconds\n")
+        print(f"Generator ready in {elapsed:.1f} seconds\n")
     
     def generate_topology(self, name, description):
         """Generate a single topology"""
-        print(f"\n🎨 Generating: {name}")
+        print(f"\nGenerating: {name}")
         print(f"Description: {description.strip()[:100]}...")
         
         start = time.time()
@@ -1149,14 +1149,14 @@ class LFTAIWorkflow:
             }
             self.metadata.append(metadata)
             
-            print(f"✓ Generated in {elapsed:.1f}s")
-            print(f"✓ Saved: {filename}")
-            print(f"✓ Lines: {metadata['lines']}")
+            print(f"Generated in {elapsed:.1f}s")
+            print(f"Saved: {filename}")
+            print(f"Lines: {metadata['lines']}")
             
             return True
             
         except Exception as e:
-            print(f"✗ Error: {e}")
+            print(f"Error: {e}")
             
             metadata = {
                 "name": name,
@@ -1183,7 +1183,7 @@ class LFTAIWorkflow:
         with open(summary_file, 'w') as f:
             json.dump(summary, f, indent=2)
         
-        print(f"\n📊 Summary saved: {summary_file}")
+        print(f"\nSummary saved: {summary_file}")
         return summary
     
     def print_summary(self):
@@ -1195,7 +1195,7 @@ class LFTAIWorkflow:
         successful = [m for m in self.metadata if m['status'] == 'success']
         failed = [m for m in self.metadata if m['status'] == 'failed']
         
-        print(f"\n✓ Successful: {len(successful)}")
+        print(f"\nSuccessful: {len(successful)}")
         print(f"✗ Failed: {len(failed)}")
         
         if successful:
@@ -1268,7 +1268,7 @@ def main():
     workflow.print_summary()
     workflow.save_summary()
     
-    print("\n✨ Workflow complete!")
+    print("\nWorkflow complete!")
     print(f"   Check the '{workflow.output_dir}' directory for generated topologies")
 
 
@@ -1351,7 +1351,7 @@ When using interactive Python:
 
 **Document Version:** 1.0  
 **Last Updated:** October 2, 2025  
-**Author:** LFT AI Team  
+**Author:** Davi Casseb (@dcasseb)  and Alexandre Kaihara
 **License:** GPL-3.0
 
 For questions or support, please open an issue on GitHub.

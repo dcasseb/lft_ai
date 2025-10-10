@@ -128,9 +128,9 @@ gen = ModernAITopologyGenerator(model_name="phi3-mini")
 ```python
 gen = ModernAITopologyGenerator(model_name="deepseek-r1")
 ```
-- 🎯 Best reasoning
-- ✓ Complex topologies
-- ⏱️ Slower (~60s initialization)
+- Best reasoning
+- Complex topologies
+- Slower (~60s initialization)
 
 ### Code-Focused (Stable Code)
 
@@ -145,7 +145,7 @@ gen = ModernAITopologyGenerator(model_name="stable-code-3b")
 
 ## Tips for Better Results
 
-### ✅ Good Prompt
+### Good Prompt
 ```python
 description = """
 Create a network with:
@@ -159,7 +159,7 @@ Create a network with:
 
 **Why:** Specific, clear, detailed
 
-### ❌ Poor Prompt
+### Poor Prompt
 ```python
 description = "Make a network"
 ```
@@ -255,7 +255,7 @@ def main():
         print(f"\nNext step: sudo python {OUTPUT_FILE}")
         
     except Exception as e:
-        print(f"✗ Error: {e}")
+        print(f"Error: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":

@@ -24,7 +24,7 @@ class LFTAIExamples:
         print("="*70)
         print("LFT AI - Practical Examples Collection")
         print("="*70)
-        print(f"\n📦 Initializing {model} model...")
+        print(f"\ Initializing {model} model...")
         print("   Please wait 30-60 seconds...\n")
         
         start = time.time()
@@ -478,7 +478,7 @@ def main():
         # Run all examples
         examples.run_all_examples()
     
-    print("\n✨ Done! Check the 'ai_generated_examples/' directory")
+    print("\n Done! Check the 'ai_generated_examples/' directory")
     print("   Run any example with: sudo python ai_generated_examples/[filename].py")
 
 
