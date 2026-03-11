@@ -5,6 +5,7 @@ Uses robust open-source models with 7B+ parameters for reliable topology generat
 """
 
 import os
+import re
 import sys
 import logging
 import torch
@@ -36,6 +37,7 @@ class ModernAITopologyGenerator:
     # Modern, reliable models with 7B+ parameters (fully open source)
     SUPPORTED_MODELS = {
         "deepseek-r1": "deepseek-ai/DeepSeek-R1-0528",
+        "deepseek-r1-8b": "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B",
         "phi3-mini": "microsoft/Phi-3-mini-4k-instruct",
         "qwen2-7b": "Qwen/Qwen2-7B-Instruct",
         "gemma2-9b": "google/gemma2-9b-it",
@@ -130,7 +132,7 @@ class ModernAITopologyGenerator:
             self.model = AutoModelForCausalLM.from_pretrained(
                 model_path,
                 quantization_config=quantization_config,
-                torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
                 device_map=self.device,
                 trust_remote_code=True,
                 low_cpu_mem_usage=True
@@ -265,40 +267,98 @@ IMPORTANT: Generate ONLY executable Python code. Start with 'from profissa_lft i
         except Exception as e:
             raise LFTException(f"Hugging Face API call failed: {str(e)}")
     
+    # LFT node constructors — shared between validation and truncation
+    _LFT_CONSTRUCTORS = ('Host(', 'Switch(', 'Controller(', 'UE(', 'EPC(', 'EnB(')
+
+    # Patterns that signal the model has started hallucinating beyond the topology
+    _HALLUCINATION_MARKERS = re.compile(
+        r'^(?:'
+        r'#!/'                        # shebang line
+        r'|"""'                       # docstring start (new file / module)
+        r"|'''"                       # alternate docstring
+        r'|\S+/\S+\.\w+'             # file path like test/scripts/foo.py
+        r'|class\s+\w+.*:'           # new class definition (not LFT)
+        r'|if\s+__name__\s*=='       # if __name__ == "__main__"
+        r')'
+    )
+
+    # Lines that look like natural language prose, not Python code
+    _PROSE_LINE = re.compile(
+        r'^(?:Let me|I need|I\'ll|We\'ll|We will|Note:|Please|Sure|Here|'
+        r'The user|However|But wait|Looking at|In the|After |'
+        r'This |That |Also|Now |Ok |Okay )'
+    )
+
+    _LFT_IMPORTS = re.compile(
+        r'^(?:from\s+profissa_lft|import\s+profissa_lft)'
+    )
+
     def validate_generated_code(self, code: str) -> bool:
         """Validate that the generated code contains LFT components."""
-        # Check for basic Python code structure
         if not code or len(code.strip()) < 50:
             return False
-        
-        # Check for LFT imports or components
-        lft_indicators = [
-            "from profissa_lft",
-            "lft.",
-            "Host(",
-            "Switch(",
-            "Controller(",
-            "UE(",
-            "EPC(",
-            "EnB("
-        ]
-        
-        # At least one LFT indicator should be present
+        lft_indicators = ('from profissa_lft', 'lft.') + self._LFT_CONSTRUCTORS
         return any(indicator in code for indicator in lft_indicators)
-    
+
     def _clean_generated_code(self, code: str) -> str:
-        """Clean and format the generated code."""
-        # Remove markdown formatting
-        code = code.replace("```python", "").replace("```", "")
-        
-        # Remove leading/trailing whitespace
-        code = code.strip()
-        
-        # Ensure proper imports
+        """Clean and format the generated code, truncating hallucinated content."""
+        code = code.replace("```python", "").replace("```", "").strip()
+        code = self._truncate_hallucinations(code)
         if "from profissa_lft" not in code:
             code = "from profissa_lft import *\n\n" + code
-        
         return code
+
+    # Max consecutive comment/blank lines before we consider it reasoning drift
+    _MAX_COMMENT_RUN = 5
+
+    def _truncate_hallucinations(self, code: str) -> str:
+        """Detect where the model drifts away from LFT topology code and cut."""
+        lines = code.split('\n')
+        seen_lft = False
+        seen_code = False  # actual code line (not import/comment/blank)
+        cut_index = len(lines)
+        comment_run = 0
+
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+
+            if not seen_lft:
+                if self._LFT_IMPORTS.match(stripped) or any(
+                    ind in stripped for ind in self._LFT_CONSTRUCTORS
+                ):
+                    seen_lft = True
+                continue
+
+            # Track runs of comment-only or blank lines (reasoning chain detection)
+            if not stripped or stripped.startswith('#'):
+                # Only count comment runs after we've seen real code
+                if seen_code:
+                    comment_run += 1
+                    if comment_run > self._MAX_COMMENT_RUN:
+                        cut_index = i - comment_run + 1
+                        break
+                continue
+            else:
+                comment_run = 0
+                seen_code = True
+
+            if stripped.startswith(('import ', 'from ')) and not self._LFT_IMPORTS.match(stripped):
+                cut_index = i
+                break
+
+            if self._HALLUCINATION_MARKERS.match(stripped):
+                cut_index = i
+                break
+
+            # Bare prose (not a comment) signals conversational drift
+            if self._PROSE_LINE.match(stripped):
+                cut_index = i
+                break
+
+        if not seen_lft:
+            return ''
+
+        return '\n'.join(lines[:cut_index]).rstrip()
     
     def generate_topology(self, prompt: str, output_file: Optional[str] = None) -> str:
         """

@@ -1517,7 +1517,7 @@ class NetworkVisualizer:
 
     def stop(self):
         self.collector.stop_background()
-        if self.animation_obj:
+        if self.animation_obj and hasattr(self.animation_obj, 'event_source') and self.animation_obj.event_source:
             self.animation_obj.event_source.stop()
         plt.close('all')
         print("Visualization stopped.")
@@ -1540,6 +1540,7 @@ class ModernAITopologyGenerator:
 
     SUPPORTED_MODELS = {
         "deepseek-r1": "deepseek-ai/DeepSeek-R1-0528",
+        "deepseek-r1-8b": "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B",
         "phi3-mini": "microsoft/Phi-3-mini-4k-instruct",
         "qwen2-7b": "Qwen/Qwen2-7B-Instruct",
         "gemma2-9b": "google/gemma2-9b-it",
@@ -1610,7 +1611,7 @@ class ModernAITopologyGenerator:
             self.model = AutoModelForCausalLM.from_pretrained(
                 model_path,
                 quantization_config=quantization_config,
-                torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
                 device_map=self.device,
                 trust_remote_code=True,
                 low_cpu_mem_usage=True
@@ -1712,20 +1713,94 @@ IMPORTANT: Generate ONLY executable Python code. Start with 'from profissa_lft i
         except Exception as e:
             raise LFTException(f"Hugging Face API call failed: {str(e)}")
 
+    # LFT node constructors — shared between validation and truncation
+    _LFT_CONSTRUCTORS = ('Host(', 'Switch(', 'Controller(', 'UE(', 'EPC(', 'EnB(')
+
+    # Patterns that signal the model has started hallucinating beyond the topology
+    _HALLUCINATION_MARKERS = re.compile(
+        r'^(?:'
+        r'#!/'                        # shebang line
+        r'|"""'                       # docstring start (new file / module)
+        r"|'''"                       # alternate docstring
+        r'|\S+/\S+\.\w+'             # file path like test/scripts/foo.py
+        r'|class\s+\w+.*:'           # new class definition (not LFT)
+        r'|if\s+__name__\s*=='       # if __name__ == "__main__"
+        r')'
+    )
+
+    # Lines that look like natural language prose, not Python code
+    _PROSE_LINE = re.compile(
+        r'^(?:Let me|I need|I\'ll|We\'ll|We will|Note:|Please|Sure|Here|'
+        r'The user|However|But wait|Looking at|In the|After |'
+        r'This |That |Also|Now |Ok |Okay )'
+    )
+
+    _LFT_IMPORTS = re.compile(
+        r'^(?:from\s+profissa_lft|import\s+profissa_lft)'
+    )
+
     def validate_generated_code(self, code: str) -> bool:
         if not code or len(code.strip()) < 50:
             return False
-        lft_indicators = [
-            "from profissa_lft", "lft.",
-            "Host(", "Switch(", "Controller(", "UE(", "EPC(", "EnB("
-        ]
+        lft_indicators = ('from profissa_lft', 'lft.') + self._LFT_CONSTRUCTORS
         return any(indicator in code for indicator in lft_indicators)
 
     def _clean_generated_code(self, code: str) -> str:
+        """Clean and format the generated code, truncating hallucinated content."""
         code = code.replace("```python", "").replace("```", "").strip()
+        code = self._truncate_hallucinations(code)
         if "from profissa_lft" not in code:
             code = "from profissa_lft import *\n\n" + code
         return code
+
+    # Max consecutive comment/blank lines before we consider it reasoning drift
+    _MAX_COMMENT_RUN = 5
+
+    def _truncate_hallucinations(self, code: str) -> str:
+        """Detect where the model drifts away from LFT topology code and cut."""
+        lines = code.split('\n')
+        seen_lft = False
+        seen_code = False
+        cut_index = len(lines)
+        comment_run = 0
+
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+
+            if not seen_lft:
+                if self._LFT_IMPORTS.match(stripped) or any(
+                    ind in stripped for ind in self._LFT_CONSTRUCTORS
+                ):
+                    seen_lft = True
+                continue
+
+            if not stripped or stripped.startswith('#'):
+                if seen_code:
+                    comment_run += 1
+                    if comment_run > self._MAX_COMMENT_RUN:
+                        cut_index = i - comment_run + 1
+                        break
+                continue
+            else:
+                comment_run = 0
+                seen_code = True
+
+            if stripped.startswith(('import ', 'from ')) and not self._LFT_IMPORTS.match(stripped):
+                cut_index = i
+                break
+
+            if self._HALLUCINATION_MARKERS.match(stripped):
+                cut_index = i
+                break
+
+            if self._PROSE_LINE.match(stripped):
+                cut_index = i
+                break
+
+        if not seen_lft:
+            return ''
+
+        return '\n'.join(lines[:cut_index]).rstrip()
 
     def generate_topology(self, prompt: str, output_file: Optional[str] = None) -> str:
         try:
@@ -1889,6 +1964,12 @@ def handle_visualize(args):
     if not HAS_MATPLOTLIB:
         print("Error: matplotlib is required. Install with: pip install matplotlib networkx")
         return 1
+
+    # Static visualization from a topology file
+    if args.file:
+        return _visualize_topology_file(args.file)
+
+    # Live visualization from Docker containers
     if not HAS_DOCKER:
         print("Warning: docker-py not found. Container monitoring will be limited.")
 
@@ -1908,6 +1989,96 @@ def handle_visualize(args):
             store.export_json(args.export_json)
             print(f"Telemetry exported to {args.export_json}")
 
+    return 0
+
+
+def _visualize_topology_file(filepath: str):
+    """Parse a generated topology .py file and render a static graph."""
+    try:
+        with open(filepath) as f:
+            code = f.read()
+    except FileNotFoundError:
+        print(f"Error: file not found: {filepath}")
+        return 1
+
+    import matplotlib.pyplot as plt
+    import networkx as nx
+
+    G = nx.Graph()
+
+    # Node patterns: var = Type("name", ...) or var = Type(name=expr, ...)
+    node_pattern = re.compile(
+        r'(\w+)\s*=\s*(Host|Switch|Controller|UE|EPC|EnB)\s*\('
+    )
+    # Extract string literal from first positional or name= keyword arg
+    name_literal = re.compile(r'["\']([^"\']+)["\']')
+    # Connect patterns: connect(var1, ..., var2, ...) — grab first and last variable names
+    connect_pattern = re.compile(
+        r'connect\s*\(([^)]+)\)'
+    )
+
+    var_to_name = {}
+    var_to_type = {}
+
+    for match in node_pattern.finditer(code):
+        var, node_type = match.group(1), match.group(2)
+        # Try to find the name from the constructor args
+        rest = code[match.end():]
+        paren_end = rest.find(')')
+        arg_str = rest[:paren_end] if paren_end != -1 else rest[:50]
+        name_match = name_literal.search(arg_str)
+        name = name_match.group(1) if name_match else var
+        var_to_name[var] = name
+        var_to_type[var] = node_type.lower()
+        G.add_node(name, type=node_type.lower())
+
+    for match in connect_pattern.finditer(code):
+        args_str = match.group(1)
+        # Extract variable names (skip string literals and method calls)
+        tokens = [t.strip().split('.')[0] for t in args_str.split(',')]
+        var_refs = [t for t in tokens if t.isidentifier() and t in var_to_name]
+        # Connect first node to second node found
+        if len(var_refs) >= 2:
+            G.add_edge(var_to_name[var_refs[0]], var_to_name[var_refs[1]])
+
+    if not G.nodes:
+        print("No LFT nodes found in the topology file.")
+        return 1
+
+    # Colors matching NetworkVisualizer
+    type_colors = {
+        'host': '#4CAF50', 'switch': '#2196F3', 'controller': '#FF9800',
+        'ue': '#9C27B0', 'enb': '#E91E63', 'epc': '#F44336', 'unknown': '#9E9E9E'
+    }
+
+    node_colors = [type_colors.get(G.nodes[n].get('type', 'unknown'), '#9E9E9E') for n in G.nodes]
+    node_sizes = [2000 if G.nodes[n].get('type') == 'switch' else 1500 for n in G.nodes]
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+    pos = nx.spring_layout(G, k=2, iterations=50, seed=42)
+
+    nx.draw_networkx_edges(G, pos, edge_color='#CCCCCC', width=2.0, alpha=0.6, ax=ax)
+    nx.draw_networkx_nodes(G, pos, node_color=node_colors, node_size=node_sizes, alpha=0.9, ax=ax)
+    nx.draw_networkx_labels(G, pos, font_size=11, font_weight='bold', ax=ax)
+
+    # Legend
+    seen_types = set(G.nodes[n].get('type', 'unknown') for n in G.nodes)
+    legend_elements = [
+        plt.Line2D([0], [0], marker='o', color='w', label=t.capitalize(),
+                   markerfacecolor=type_colors.get(t, '#9E9E9E'), markersize=12)
+        for t in sorted(seen_types)
+    ]
+    ax.legend(handles=legend_elements, loc='upper right', fontsize=11)
+
+    ax.set_title(f'LFT Topology: {os.path.basename(filepath)}', fontsize=14, fontweight='bold')
+    ax.axis('off')
+
+    print(f"Topology: {len(G.nodes)} nodes, {len(G.edges)} connections")
+    for n in G.nodes:
+        print(f"  {n} ({G.nodes[n].get('type', '?')})")
+
+    plt.tight_layout()
+    plt.show()
     return 0
 
 
@@ -1976,6 +2147,8 @@ Commands:
 
     # Visualize command
     viz_parser = subparsers.add_parser('visualize', help='Real-time network visualization')
+    viz_parser.add_argument('--file', '-f', type=str, default=None,
+                           help='Visualize a generated topology .py file (static graph)')
     viz_parser.add_argument('--interval', type=int, default=1000, help='Update interval in ms (default: 1000)')
     viz_parser.add_argument('--export-csv', type=str, default=None, help='Export telemetry to CSV on exit')
     viz_parser.add_argument('--export-json', type=str, default=None, help='Export telemetry to JSON on exit')
