@@ -16,7 +16,6 @@ from transformers import (
     BitsAndBytesConfig,
     GenerationConfig
 )
-from accelerate import infer_auto_device_map
 
 from .exceptions import LFTException
 

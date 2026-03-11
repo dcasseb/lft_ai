@@ -112,7 +112,6 @@ try:
         BitsAndBytesConfig,
         GenerationConfig,
     )
-    from accelerate import infer_auto_device_map
     HAS_AI = True
 except ImportError:
     HAS_AI = False
