@@ -115,22 +115,23 @@ def handle_generate(args, logger):
             api_token=args.token
         )
         
-        # Generate topology
+        # Generate topology (save to file if output specified)
         logger.info("Generating topology...")
-        generated_code = generator.generate_topology(args.description)
-        
+        generated_code = generator.generate_topology(
+            args.description,
+            output_file=args.output
+        )
+
         # Validate if requested
         if args.validate:
-            if generator.validate_topology(generated_code):
+            if generator.validate_generated_code(generated_code):
                 logger.info("Generated code validation: PASSED")
             else:
                 logger.warning("Generated code validation: FAILED")
-        
+
         # Output the result
         if args.output:
-            output_file = args.output
-            generator.generate_and_save(args.description, output_file)
-            print(f"Topology generated and saved to: {output_file}")
+            print(f"Topology generated and saved to: {args.output}")
         else:
             print("\n" + "="*50)
             print("GENERATED TOPOLOGY CODE")
@@ -181,28 +182,29 @@ def handle_interactive(args, logger):
                 # Generate topology
                 logger.info("Generating topology...")
                 generated_code = generator.generate_topology(description)
-                
+
                 # Validate
-                if generator.validate_topology(generated_code):
+                if generator.validate_generated_code(generated_code):
                     logger.info("Generated code validation: PASSED")
                 else:
                     logger.warning("Generated code validation: FAILED")
-                
+
                 # Show result
                 print("\n" + "="*50)
                 print("GENERATED TOPOLOGY CODE")
                 print("="*50)
                 print(generated_code)
                 print("="*50)
-                
+
                 # Ask if user wants to save
                 save = input("\nSave to file? (y/n): ").strip().lower()
                 if save in ['y', 'yes']:
                     filename = input("Enter filename (default: generated_topology.py): ").strip()
                     if not filename:
                         filename = "generated_topology.py"
-                    
-                    generator.generate_and_save(description, filename)
+
+                    with open(filename, 'w') as f:
+                        f.write(generated_code)
                     print(f"Topology saved to: {filename}")
                 
                 print()

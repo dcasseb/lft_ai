@@ -26,6 +26,14 @@ class ModernAITopologyGenerator:
     Supports both local inference and Hugging Face API.
     """
     
+    _GEN_PARAMS = {
+        'max_new_tokens': 2048,
+        'temperature': 0.7,
+        'top_p': 0.9,
+        'do_sample': True,
+        'repetition_penalty': 1.1,
+    }
+
     # Modern, reliable models with 7B+ parameters (fully open source)
     SUPPORTED_MODELS = {
         "deepseek-r1": "deepseek-ai/DeepSeek-R1-0528",
@@ -131,13 +139,9 @@ class ModernAITopologyGenerator:
             
             # Setup generation config
             self.generation_config = GenerationConfig(
-                max_new_tokens=2048,
-                temperature=0.7,
-                top_p=0.9,
-                do_sample=True,
+                **self._GEN_PARAMS,
                 pad_token_id=self.tokenizer.pad_token_id,
                 eos_token_id=self.tokenizer.eos_token_id,
-                repetition_penalty=1.1
             )
             
             self.logger.info(f"Model loaded successfully: {model_path}")
@@ -196,13 +200,9 @@ IMPORTANT: Generate ONLY executable Python code. Start with 'from profissa_lft i
                 with torch.no_grad():
                     outputs = self.model.generate(
                         **inputs,
-                        max_new_tokens=2048,
-                        temperature=0.7,
-                        top_p=0.9,
-                        do_sample=True,
+                        **self._GEN_PARAMS,
                         pad_token_id=self.tokenizer.pad_token_id,
                         eos_token_id=self.tokenizer.eos_token_id,
-                        repetition_penalty=1.1
                     )
             except Exception as gen_error:
                 # Method 2: Fallback with simpler parameters
@@ -240,8 +240,9 @@ IMPORTANT: Generate ONLY executable Python code. Start with 'from profissa_lft i
             # Format the prompt
             formatted_prompt = self._format_prompt(prompt)
             
-            # API endpoint
-            api_url = f"https://api-inference.huggingface.co/models/{self.SUPPORTED_MODELS[self.model_name]}"
+            # API endpoint — resolve alias or use model_name directly as a full path
+            model_path = self.SUPPORTED_MODELS.get(self.model_name, self.model_name)
+            api_url = f"https://api-inference.huggingface.co/models/{model_path}"
             
             headers = {
                 "Authorization": f"Bearer {self.api_token}",
@@ -250,13 +251,7 @@ IMPORTANT: Generate ONLY executable Python code. Start with 'from profissa_lft i
             
             payload = {
                 "inputs": formatted_prompt,
-                "parameters": {
-                    "max_new_tokens": 2048,
-                    "temperature": 0.7,
-                    "top_p": 0.9,
-                    "do_sample": True,
-                    "repetition_penalty": 1.1
-                }
+                "parameters": dict(self._GEN_PARAMS),
             }
             
             response = requests.post(api_url, headers=headers, json=payload)
@@ -271,7 +266,7 @@ IMPORTANT: Generate ONLY executable Python code. Start with 'from profissa_lft i
         except Exception as e:
             raise LFTException(f"Hugging Face API call failed: {str(e)}")
     
-    def _validate_generated_code(self, code: str) -> bool:
+    def validate_generated_code(self, code: str) -> bool:
         """Validate that the generated code contains LFT components."""
         # Check for basic Python code structure
         if not code or len(code.strip()) < 50:
@@ -327,7 +322,7 @@ IMPORTANT: Generate ONLY executable Python code. Start with 'from profissa_lft i
                 generated_code = self._call_local_model(prompt)
             
             # Validate the generated code
-            if not self._validate_generated_code(generated_code):
+            if not self.validate_generated_code(generated_code):
                 raise LFTException("Generated code does not contain valid LFT components")
             
             # Clean the code

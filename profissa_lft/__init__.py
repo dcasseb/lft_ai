@@ -21,5 +21,8 @@ from .ue import UE
 from .epc import EPC
 from .enb import EnB
 from .ai_generator import AITopologyGenerator, ModernAITopologyGenerator
+from .telemetry import TelemetryStore, TelemetryCollector
 
-__all__ = [Node, Host, Controller, Switch, UE, EPC, EnB, AITopologyGenerator, ModernAITopologyGenerator]
+__all__ = ['Node', 'Host', 'Controller', 'Switch', 'UE', 'EPC', 'EnB',
+           'AITopologyGenerator', 'ModernAITopologyGenerator',
+           'TelemetryStore', 'TelemetryCollector']

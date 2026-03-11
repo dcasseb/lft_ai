@@ -1,17 +1,14 @@
 #!/usr/bin/env python3
 """
 LFT Network Visualizer
-Real-time graph visualization for emulated networks
+Real-time graph visualization for emulated networks.
+Uses the telemetry module for parallel data collection.
 """
 
-import os
 import sys
-import time
-from collections import defaultdict, deque
 
 try:
     import matplotlib
-    matplotlib.use('TkAgg')  # Use TkAgg backend for interactive display
     import matplotlib.pyplot as plt
     import matplotlib.animation as animation
     import networkx as nx
@@ -19,15 +16,13 @@ try:
 except ImportError:
     HAS_MATPLOTLIB = False
 
-try:
-    import docker
-    HAS_DOCKER = True
-except ImportError:
-    HAS_DOCKER = False
+from .telemetry import TelemetryStore, TelemetryCollector, guess_node_type, get_docker_client
 
 
 class NetworkVisualizer:
     """Real-time network topology and traffic visualizer"""
+
+    _LAYOUT_PARAMS = dict(k=2, iterations=50, seed=42)
 
     NODE_TYPE_COLORS = {
         'host': '#4CAF50',      # Green
@@ -39,12 +34,13 @@ class NetworkVisualizer:
         'unknown': '#9E9E9E'    # Gray
     }
 
-    def __init__(self, update_interval=1000):
+    def __init__(self, update_interval=1000, telemetry_store=None):
         """
-        Initialize the network visualizer
+        Initialize the network visualizer.
 
         Args:
             update_interval: Update interval in milliseconds (default: 1000ms = 1s)
+            telemetry_store: Optional TelemetryStore instance to share with external code.
         """
         if not HAS_MATPLOTLIB:
             raise ImportError("matplotlib is required for visualization. "
@@ -53,94 +49,74 @@ class NetworkVisualizer:
         self.update_interval = update_interval
         self.graph = nx.Graph()
 
-        # Docker client for container monitoring
-        self.docker_client = docker.from_env() if HAS_DOCKER else None
+        # Single Docker client — shared with telemetry collector
+        self._docker_client = get_docker_client()
 
-        # Statistics storage
-        self.stats_history = defaultdict(lambda: deque(maxlen=100))
+        # Telemetry — pass our docker client to avoid a second connection
+        self.store = telemetry_store or TelemetryStore()
+        self.collector = TelemetryCollector(
+            self.store, docker_client=self._docker_client
+        )
 
-        # Figure setup
+        # Figure handles
         self.fig = None
         self.ax_topology = None
+        self.ax_cpu = None
+        self.ax_memory = None
+        self.ax_network = None
+        self.ax_latency = None
         self.animation_obj = None
 
-        # Cached layout — recomputed only when topology changes
+        # Cached layout
         self._cached_layout = None
 
     def detect_network_topology(self):
-        """Detect running network topology from Docker containers"""
-        if not self.docker_client:
-            print("Docker client not available")
+        """Detect running network topology from Docker containers."""
+        if not self._docker_client:
             return
 
         try:
-            containers = self.docker_client.containers.list()
-
-            # Clear existing graph
+            containers = self._docker_client.containers.list()
             self.graph.clear()
 
             for container in containers:
                 name = container.name
                 labels = container.labels
+                node_type = labels.get('lft.type', guess_node_type(name))
 
-                # Detect node type from container labels first, then fall back to name
-                node_type = labels.get('lft.type', self._guess_node_type(name))
-
-                # Add node to graph
                 self.graph.add_node(
                     name,
                     type=node_type,
                     container_id=container.id,
                     status=container.status
                 )
+                self.collector.register_container(name, node_type)
 
-            # Detect edges (connections) based on network bridges
             self._detect_connections()
 
-            # Recompute layout for the new topology
             if len(self.graph.nodes()) > 0:
-                self._cached_layout = nx.spring_layout(self.graph, k=2, iterations=50, seed=42)
+                self._cached_layout = nx.spring_layout(self.graph, **self._LAYOUT_PARAMS)
             else:
                 self._cached_layout = None
 
         except Exception as e:
             print(f"Error detecting topology: {e}")
 
-    @staticmethod
-    def _guess_node_type(name):
-        """Guess node type from container name (fallback heuristic)."""
-        if name.startswith('h') and len(name) <= 3:
-            return 'host'
-        elif name.startswith('s') and len(name) <= 3:
-            return 'switch'
-        elif name.startswith('c') or 'controller' in name.lower():
-            return 'controller'
-        elif name.startswith('ue'):
-            return 'ue'
-        elif name.startswith('enb'):
-            return 'enb'
-        elif name.startswith('epc'):
-            return 'epc'
-        return 'unknown'
-
     def _detect_connections(self):
-        """Detect connections between nodes"""
+        """Detect connections between nodes."""
         nodes = list(self.graph.nodes())
 
         hosts = [n for n in nodes if self.graph.nodes[n]['type'] == 'host']
         switches = [n for n in nodes if self.graph.nodes[n]['type'] == 'switch']
         controllers = [n for n in nodes if self.graph.nodes[n]['type'] == 'controller']
 
-        # Simple topology: hosts -> switches -> controllers
         if switches:
             for host in hosts:
                 self.graph.add_edge(host, switches[0], weight=1.0)
-
             for switch in switches:
                 for controller in controllers:
                     self.graph.add_edge(switch, controller, weight=1.0)
 
-        # Wireless connections
         ues = [n for n in nodes if self.graph.nodes[n]['type'] == 'ue']
         enbs = [n for n in nodes if self.graph.nodes[n]['type'] == 'enb']
         epcs = [n for n in nodes if self.graph.nodes[n]['type'] == 'epc']
@@ -148,62 +124,9 @@ class NetworkVisualizer:
         for ue in ues:
             if enbs:
                 self.graph.add_edge(ue, enbs[0], weight=1.0)
-
         for enb in enbs:
             if epcs:
                 self.graph.add_edge(enb, epcs[0], weight=1.0)
-
-    def get_container_stats(self, container_id):
-        """Get real-time statistics from a container"""
-        if not self.docker_client:
-            return {}
-
-        try:
-            container = self.docker_client.containers.get(container_id)
-            stats = container.stats(stream=False)
-
-            # Parse CPU usage
-            cpu_delta = stats['cpu_stats']['cpu_usage']['total_usage'] - \
-                       stats['precpu_stats']['cpu_usage']['total_usage']
-            system_delta = stats['cpu_stats']['system_cpu_usage'] - \
-                          stats['precpu_stats']['system_cpu_usage']
-            cpu_percent = (cpu_delta / system_delta) * 100.0 if system_delta > 0 else 0.0
-
-            # Parse memory usage
-            mem_usage = stats['memory_stats'].get('usage', 0)
-            mem_limit = stats['memory_stats'].get('limit', 1)
-            mem_percent = (mem_usage / mem_limit) * 100.0
-
-            # Parse network I/O
-            networks = stats.get('networks', {})
-            rx_bytes = sum(net.get('rx_bytes', 0) for net in networks.values())
-            tx_bytes = sum(net.get('tx_bytes', 0) for net in networks.values())
-
-            return {
-                'cpu_percent': cpu_percent,
-                'memory_percent': mem_percent,
-                'memory_usage_mb': mem_usage / (1024 * 1024),
-                'rx_bytes': rx_bytes,
-                'tx_bytes': tx_bytes,
-                'timestamp': time.time()
-            }
-
-        except Exception as e:
-            return {}
-
-    def update_statistics(self):
-        """Update statistics for all nodes"""
-        for node, data in self.graph.nodes(data=True):
-            if 'container_id' in data:
-                stats = self.get_container_stats(data['container_id'])
-                if stats:
-                    self.stats_history[node].append({
-                        'timestamp': stats['timestamp'],
-                        'cpu': stats['cpu_percent'],
-                        'memory': stats['memory_percent'],
-                        'rx': stats['rx_bytes'],
-                        'tx': stats['tx_bytes']
-                    })
 
     def _build_legend(self, ax):
         """Build the node type legend on the given axis."""
@@ -215,39 +138,43 @@ class NetworkVisualizer:
         ]
         ax.legend(handles=legend_elements, loc='upper right', fontsize=10)
 
+    def _node_color(self, node):
+        ntype = self.graph.nodes.get(node, {}).get('type', 'unknown')
+        return self.NODE_TYPE_COLORS.get(ntype, '#9E9E9E')
+
     def setup_figure(self):
-        """Setup the matplotlib figure with subplots"""
-        self.fig = plt.figure(figsize=(16, 10))
-        self.fig.suptitle('LFT Network Real-Time Visualization', fontsize=16, fontweight='bold')
+        """Setup the matplotlib figure with subplots."""
+        self.fig = plt.figure(figsize=(18, 12))
+        self.fig.suptitle('LFT Network Real-Time Monitoring', fontsize=16, fontweight='bold')
 
-        # Create grid layout
-        gs = self.fig.add_gridspec(2, 2, height_ratios=[2, 1], hspace=0.3, wspace=0.3)
+        gs = self.fig.add_gridspec(3, 2, height_ratios=[2, 1, 1], hspace=0.35, wspace=0.3)
 
-        # Topology view (large, spans both columns)
         self.ax_topology = self.fig.add_subplot(gs[0, :])
-
-        # Statistics plots (bottom)
         self.ax_cpu = self.fig.add_subplot(gs[1, 0])
-        self.ax_network = self.fig.add_subplot(gs[1, 1])
+        self.ax_memory = self.fig.add_subplot(gs[1, 1])
+        self.ax_network = self.fig.add_subplot(gs[2, 0])
+        self.ax_latency = self.fig.add_subplot(gs[2, 1])
 
     def update_plot(self, frame):
-        """Update plot for animation"""
-        # Re-detect topology periodically
-        if frame % 10 == 0:
+        """Update plot for animation.
+
+        Data collection happens in a background thread (started in start()),
+        so this method only reads from the store — it never blocks on Docker.
+        """
+        if frame > 0 and frame % 10 == 0:
             self.detect_network_topology()
 
-        # Update statistics
-        self.update_statistics()
-
-        # Clear and redraw
         self.ax_topology.clear()
         self.draw_topology()
-        self.draw_statistics()
+        self._draw_cpu()
+        self._draw_memory()
+        self._draw_network()
+        self._draw_latency()
 
-        return self.ax_topology, self.ax_cpu, self.ax_network
+        return self.ax_topology, self.ax_cpu, self.ax_memory, self.ax_network, self.ax_latency
 
     def draw_topology(self):
-        """Draw the network topology"""
+        """Draw the network topology."""
         if len(self.graph.nodes()) == 0:
             self.ax_topology.text(0.5, 0.5, 'No network detected\nRun a topology first!',
                                  ha='center', va='center', fontsize=14, color='red')
@@ -257,40 +184,24 @@ class NetworkVisualizer:
 
         pos = self._cached_layout
         if pos is None:
-            pos = nx.spring_layout(self.graph, k=2, iterations=50, seed=42)
+            pos = nx.spring_layout(self.graph, **self._LAYOUT_PARAMS)
 
-        # Draw edges
         nx.draw_networkx_edges(
-            self.graph, pos,
-            edge_color='#CCCCCC',
-            width=2.0,
-            alpha=0.6,
-            ax=self.ax_topology
+            self.graph, pos, edge_color='#CCCCCC', width=2.0, alpha=0.6, ax=self.ax_topology
         )
 
-        # Draw nodes
-        node_colors = [self.NODE_TYPE_COLORS.get(self.graph.nodes[n].get('type', 'unknown'), '#9E9E9E')
-                       for n in self.graph.nodes()]
+        node_colors = [self._node_color(n) for n in self.graph.nodes()]
         node_sizes = [2000 if self.graph.nodes[n].get('type') == 'switch' else 1500
                       for n in self.graph.nodes()]
 
         nx.draw_networkx_nodes(
-            self.graph, pos,
-            node_color=node_colors,
-            node_size=node_sizes,
-            alpha=0.9,
-            ax=self.ax_topology
+            self.graph, pos, node_color=node_colors, node_size=node_sizes,
+            alpha=0.9, ax=self.ax_topology
         )
-
-        # Draw labels
         nx.draw_networkx_labels(
-            self.graph, pos,
-            font_size=10,
-            font_weight='bold',
-            ax=self.ax_topology
+            self.graph, pos, font_size=10, font_weight='bold', ax=self.ax_topology
         )
 
-        # Draw status indicators
         for node, (x, y) in pos.items():
             status = self.graph.nodes[node].get('status', 'unknown')
             status_color = '#4CAF50' if status == 'running' else '#F44336'
@@ -301,55 +212,82 @@ class NetworkVisualizer:
         self.ax_topology.axis('off')
         self._build_legend(self.ax_topology)
 
-    def draw_statistics(self):
-        """Draw statistics plots"""
-        # CPU usage plot
-        self.ax_cpu.clear()
-        self.ax_cpu.set_title('CPU Usage (%)', fontsize=12)
-        self.ax_cpu.set_xlabel('Samples')
-        self.ax_cpu.set_ylabel('CPU %')
-        self.ax_cpu.set_ylim([0, 100])
-        self.ax_cpu.grid(True, alpha=0.3)
+    def _draw_timeseries(self, ax, metric, title, ylabel, ylim=None, filter_fn=None):
+        """Generic helper to draw a per-node time-series on an axis."""
+        ax.clear()
+        ax.set_title(title, fontsize=12)
+        ax.set_xlabel('Samples')
+        ax.set_ylabel(ylabel)
+        if ylim:
+            ax.set_ylim(ylim)
+        ax.grid(True, alpha=0.3)
 
-        for node, history in self.stats_history.items():
-            if len(history) > 0:
-                cpu_values = [s['cpu'] for s in history]
-                color = self.NODE_TYPE_COLORS.get(
-                    self.graph.nodes.get(node, {}).get('type', 'unknown'), '#9E9E9E')
-                self.ax_cpu.plot(cpu_values, label=node, color=color, linewidth=2)
+        has_data = False
+        for node in self.store.nodes():
+            series = self.store.get(node, metric)
+            if series:
+                values = [v for _, v in series]
+                if filter_fn:
+                    values = [v for v in values if filter_fn(v)]
+                if values:
+                    ax.plot(values, label=node, color=self._node_color(node), linewidth=2)
+                    has_data = True
 
-        if self.stats_history:
-            self.ax_cpu.legend(loc='upper right', fontsize=8)
+        if has_data:
+            ax.legend(loc='upper right', fontsize=8)
 
-        # Network traffic plot
-        self.ax_network.clear()
-        self.ax_network.set_title('Network Traffic (KB/s)', fontsize=12)
-        self.ax_network.set_xlabel('Samples')
-        self.ax_network.set_ylabel('KB/s')
-        self.ax_network.grid(True, alpha=0.3)
+    def _draw_cpu(self):
+        self._draw_timeseries(self.ax_cpu, 'cpu_pct', 'CPU Usage (%)', 'CPU %', ylim=[0, 100])
 
-        for node, history in self.stats_history.items():
-            if len(history) > 1:
+    def _draw_memory(self):
+        self._draw_timeseries(self.ax_memory, 'mem_mb', 'Memory Usage (MB)', 'MB')
+
+    def _draw_network(self):
+        """Draw network throughput (KB/s) derived from cumulative byte counters."""
+        ax = self.ax_network
+        ax.clear()
+        ax.set_title('Network Throughput (KB/s)', fontsize=12)
+        ax.set_xlabel('Samples')
+        ax.set_ylabel('KB/s')
+        ax.grid(True, alpha=0.3)
+
+        has_data = False
+        for node in self.store.nodes():
+            rx = self.store.get(node, 'rx_bytes')
+            tx = self.store.get(node, 'tx_bytes')
+            if len(rx) > 1 and len(tx) > 1:
                 throughput = []
-                for i in range(1, len(history)):
-                    delta_bytes = (history[i]['rx'] + history[i]['tx']) - \
-                                 (history[i-1]['rx'] + history[i-1]['tx'])
-                    delta_time = history[i]['timestamp'] - history[i-1]['timestamp']
-                    if delta_time > 0:
-                        throughput.append((delta_bytes / delta_time) / 1024)
+                for i in range(1, min(len(rx), len(tx))):
+                    dt = rx[i][0] - rx[i-1][0]
+                    if dt > 0:
+                        db = (rx[i][1] + tx[i][1]) - (rx[i-1][1] + tx[i-1][1])
+                        throughput.append(db / dt / 1024)
                     else:
                         throughput.append(0)
-
                 if throughput:
-                    color = self.NODE_TYPE_COLORS.get(
-                        self.graph.nodes.get(node, {}).get('type', 'unknown'), '#9E9E9E')
-                    self.ax_network.plot(throughput, label=node, color=color, linewidth=2)
+                    ax.plot(throughput, label=node, color=self._node_color(node), linewidth=2)
+                    has_data = True
 
-        if self.stats_history:
-            self.ax_network.legend(loc='upper right', fontsize=8)
+        if has_data:
+            ax.legend(loc='upper right', fontsize=8)
+
+    def _draw_latency(self):
+        self._draw_timeseries(
+            self.ax_latency, 'rtt_avg', 'Latency (ms)', 'RTT ms',
+            filter_fn=lambda v: v >= 0
+        )
 
     def start(self):
-        """Start the real-time visualization"""
+        """Start the real-time visualization.
+
+        Telemetry collection runs in a background daemon thread so the GUI
+        never blocks on Docker API calls.
+        """
+        try:
+            matplotlib.use('TkAgg')
+        except Exception:
+            pass
+
         print("Starting LFT Network Visualizer...")
         print("Detecting network topology...")
 
@@ -359,6 +297,8 @@ class NetworkVisualizer:
             print("Warning: No network detected. Make sure containers are running.")
         else:
             print(f"Detected {len(self.graph.nodes())} nodes and {len(self.graph.edges())} connections")
+
+        self.collector.start_background(interval=self.update_interval / 1000.0)
 
         self.setup_figure()
 
@@ -380,7 +320,8 @@ class NetworkVisualizer:
             self.stop()
 
     def stop(self):
-        """Stop the visualization"""
+        """Stop the visualization and background collection."""
+        self.collector.stop_background()
         if self.animation_obj:
             self.animation_obj.event_source.stop()
         plt.close('all')
@@ -388,15 +329,21 @@ class NetworkVisualizer:
 
 
 def main():
-    """Main entry point"""
+    """Main entry point."""
     import argparse
 
     parser = argparse.ArgumentParser(description='LFT Network Real-Time Visualizer')
     parser.add_argument(
-        '--interval',
-        type=int,
-        default=1000,
+        '--interval', type=int, default=1000,
         help='Update interval in milliseconds (default: 1000)'
+    )
+    parser.add_argument(
+        '--export-csv', type=str, default=None,
+        help='Export telemetry data to CSV on exit'
+    )
+    parser.add_argument(
+        '--export-json', type=str, default=None,
+        help='Export telemetry data to JSON on exit'
     )
 
     args = parser.parse_args()
@@ -407,15 +354,22 @@ def main():
 
     if not HAS_DOCKER:
         print("Warning: docker-py not found. Container monitoring will be limited.")
-        print("Install with: pip install docker")
 
-    visualizer = NetworkVisualizer(update_interval=args.interval)
+    store = TelemetryStore()
+    visualizer = NetworkVisualizer(update_interval=args.interval, telemetry_store=store)
 
     try:
         visualizer.start()
     except KeyboardInterrupt:
         print("\nExiting...")
         visualizer.stop()
+    finally:
+        if args.export_csv:
+            store.export_csv(args.export_csv)
+            print(f"Telemetry exported to {args.export_csv}")
+        if args.export_json:
+            store.export_json(args.export_json)
+            print(f"Telemetry exported to {args.export_json}")
 
 
 if __name__ == "__main__":
