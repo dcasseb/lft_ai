@@ -1017,9 +1017,12 @@ class ContainerCollector:
 
             cpu_delta = (stats['cpu_stats']['cpu_usage']['total_usage']
                          - stats['precpu_stats']['cpu_usage']['total_usage'])
-            system_delta = (stats['cpu_stats']['system_cpu_usage']
-                            - stats['precpu_stats']['system_cpu_usage'])
-            cpu_pct = (cpu_delta / system_delta * 100.0) if system_delta > 0 else 0.0
+            # Podman may omit system_cpu_usage from precpu_stats
+            sys_cur = stats['cpu_stats'].get('system_cpu_usage', 0)
+            sys_pre = stats['precpu_stats'].get('system_cpu_usage', 0)
+            system_delta = sys_cur - sys_pre
+            online_cpus = stats['cpu_stats'].get('online_cpus', 1)
+            cpu_pct = (cpu_delta / system_delta * online_cpus * 100.0) if system_delta > 0 else 0.0
 
             mem_usage = stats['memory_stats'].get('usage', 0)
             mem_limit = stats['memory_stats'].get('limit', 1)
