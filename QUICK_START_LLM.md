@@ -312,7 +312,7 @@ sudo python output.py
 
 ## Next Steps
 
-1. **Read full guide**: `LLM_INTEGRATION_GUIDE.md`
+1. **Read full guide**: `AI_README.md`
 2. **Try examples**: `examples/` directory
 3. **Run tests**: `test_new_ai.py`
 4. **Experiment**: Try different models and prompts!
@@ -338,7 +338,8 @@ A: Yes, use Ctrl+C
 
 ---
 
-**Quick Start Guide v1.0**  
-**October 2, 2025**
+**Quick Start Guide v1.1**
+**March 12, 2026**
+**Maintainer:** Profissa - UnB
 
-For detailed information, see: `LLM_INTEGRATION_GUIDE.md`
+For detailed information, see: `AI_README.md`

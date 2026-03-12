@@ -1,9 +1,9 @@
 # LFT Network Visualizer Guide
 ## Real-Time Graph Visualization for Emulated Networks
 
-**Version:** 1.0  
-**Date:** October 9, 2025  
-**Features:** Real-time topology visualization, live statistics, traffic monitoring
+**Version:** 1.1
+**Date:** March 12, 2026
+**Features:** Real-time topology visualization, live statistics, traffic monitoring, static file visualization, Podman support
 
 ---
 
@@ -14,7 +14,10 @@ The LFT Network Visualizer provides real-time graphical visualization of your ru
 - **Network Topology**: Visual graph showing all nodes and connections
 - **Live Statistics**: CPU and memory usage for each container
 - **Traffic Monitoring**: Real-time network throughput graphs
+- **Latency Monitoring**: RTT/latency between node pairs
 - **Status Indicators**: Visual health status for each node
+- **Static Visualization**: Render topology graphs from generated `.py` files
+- **Podman Support**: Works with both Docker and Podman container runtimes
 
 ---
 
@@ -24,8 +27,8 @@ The LFT Network Visualizer provides real-time graphical visualization of your ru
 
 ```bash
 # Activate your LFT environment
-cd ~/UnB/lft_ai
-source lft_env/bin/activate
+cd lft_ai
+source lft_ai/bin/activate  # or your virtual environment name
 ```
 
 ### Install Dependencies
@@ -54,7 +57,7 @@ from profissa_lft import Host, Switch, Controller
 h1 = Host('h1')
 h2 = Host('h2')
 s1 = Switch('s1')
-c1 = Controller('c1', controller_type='opendaylight', ip='192.168.1.100')
+c1 = Controller('c1')
 
 # Instantiate
 h1.instantiate()
@@ -84,9 +87,8 @@ sudo python simple_topology.py
 In a **new terminal**:
 
 ```bash
-cd ~/UnB/lft_ai
-source lft_env/bin/activate
-python visualize_network.py
+source lft_ai/bin/activate  # or your virtual environment name
+python lft_ai_standalone.py visualize
 ```
 
 That's it! The visualization window will open showing your network in real-time.
@@ -120,11 +122,20 @@ Bottom-left panel shows:
 
 ### 3. Network Traffic Graph
 
-Bottom-right panel shows:
+Bottom-left (second row, right) panel shows:
 - Real-time network throughput in KB/s
 - Combined RX/TX traffic
 - Color-coded per node
-- Historical data (last 50 samples)
+
+### 4. Memory Usage Graph
+
+Tracks memory consumption (in MB) per container in real-time.
+
+### 5. Latency Graph
+
+Bottom-right panel shows:
+- RTT/latency between node pairs (in ms)
+- Measured via ping between containers
 
 ---
 
@@ -137,7 +148,7 @@ Bottom-right panel shows:
 sudo python examples/simpleSDNTopology.py
 
 # Terminal 2: Visualize
-python visualize_network.py
+python lft_ai_standalone.py visualize
 ```
 
 ### Example 2: Visualize 4G Network
@@ -147,10 +158,21 @@ python visualize_network.py
 sudo python examples/simple4GTopology.py
 
 # Terminal 2: Visualize  
-python visualize_network.py
+python lft_ai_standalone.py visualize
 ```
 
-### Example 3: Visualize AI-Generated Topology
+### Example 3: Static Visualization from File
+
+You can visualize a generated topology `.py` file without running containers:
+
+```bash
+# Visualize a generated topology file
+python lft_ai_standalone.py visualize --file topology.py
+```
+
+This parses the Python file, extracts nodes and connections, and renders a static graph.
+
+### Example 4: Visualize AI-Generated Topology
 
 ```bash
 # Terminal 1: Generate and run
@@ -172,7 +194,7 @@ EOF
 sudo python generated.py
 
 # Terminal 2: Visualize
-python visualize_network.py
+python lft_ai_standalone.py visualize
 ```
 
 ---
@@ -183,10 +205,10 @@ python visualize_network.py
 
 ```bash
 # Update every 500ms (faster, more CPU)
-python visualize_network.py --interval 500
+python lft_ai_standalone.py visualize --interval 500
 
 # Update every 2 seconds (slower, less CPU)
-python visualize_network.py --interval 2000
+python lft_ai_standalone.py visualize --interval 2000
 ```
 
 ### Programmatic Usage
@@ -311,7 +333,7 @@ pip install docker
 **Solution:**
 ```bash
 # Increase update interval to reduce CPU
-python visualize_network.py --interval 2000
+python lft_ai_standalone.py visualize --interval 2000
 ```
 
 ### Issue: Statistics not updating
@@ -320,6 +342,26 @@ python visualize_network.py --interval 2000
 1. Verify Docker daemon is running: `sudo systemctl status docker`
 2. Check container stats manually: `docker stats`
 3. Ensure your user has Docker permissions
+
+### Issue: Using Podman instead of Docker
+
+**Solution:**
+The visualizer supports Podman via the Docker-compatible API. Set the `DOCKER_HOST` environment variable:
+
+```bash
+# Start Podman socket
+systemctl --user start podman.socket
+
+# Run visualizer with Podman
+DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock python lft_ai_standalone.py visualize
+```
+
+You may also need to configure short image names:
+```bash
+# Create registries config for Podman
+mkdir -p ~/.config/containers
+echo 'unqualified-search-registries = ["docker.io"]' > ~/.config/containers/registries.conf
+```
 
 ---
 
@@ -411,14 +453,21 @@ proc.terminate()
 ### Basic Commands
 
 ```bash
-# Start visualizer
-python visualize_network.py
+# Start live visualizer (monitors running containers)
+python lft_ai_standalone.py visualize
+
+# Visualize a topology file (static graph, no containers needed)
+python lft_ai_standalone.py visualize --file topology.py
 
 # Custom update interval
-python visualize_network.py --interval 2000
+python lft_ai_standalone.py visualize --interval 2000
+
+# Export telemetry data
+python lft_ai_standalone.py visualize --export-csv metrics.csv
+python lft_ai_standalone.py visualize --export-json metrics.json
 
 # Get help
-python visualize_network.py --help
+python lft_ai_standalone.py visualize --help
 ```
 
 ### Docker Commands (for debugging)
@@ -583,8 +632,6 @@ For questions or issues, please open an issue on GitHub!
 
 ---
 
-**Version:** 1.0  
-**Last Updated:** October 9, 2025  
-**Maintainer:** LFT AI Team
-
-Happy visualizing! 📊🚀
+**Version:** 1.1
+**Last Updated:** March 12, 2026
+**Maintainer:** Profissa - UnB

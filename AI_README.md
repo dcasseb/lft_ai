@@ -77,10 +77,10 @@ description = "Create a 4G wireless network with 3 UEs connected to an eNodeB an
 generated_code = generator.generate_topology(description)
 
 # Save to file
-generator.generate_and_save(description, "wireless_network.py")
+generator.generate_topology(description, output_file="wireless_network.py")
 
 # Validate code
-if generator.validate_topology(generated_code):
+if generator.validate_generated_code(generated_code):
     print("Generated code is valid!")
 ```
 
@@ -167,7 +167,7 @@ lft-ai generate "description" [options]
 **Options**:
 - `-o, --output FILE`: Output file path
 - `--local`: Use local model instead of API
-- `--model MODEL`: Model name (default: deepseek-ai/DeepSeek-R1-0528)
+- `--model MODEL`: Model name or alias (default: deepseek-ai/DeepSeek-R1-0528). Aliases: `deepseek-r1`, `deepseek-r1-8b`, `phi3-mini`, `stable-code-3b`, `qwen2-7b`, `gemma2-9b`, `code-llama-7b`
 - `--token TOKEN`: Hugging Face API token
 - `--validate`: Validate generated code
 - `-v, --verbose`: Verbose output
@@ -188,6 +188,27 @@ lft-ai interactive [options]
 Show example topology descriptions:
 ```bash
 lft-ai examples
+```
+
+### Standalone Script
+
+The project includes `lft_ai_standalone.py`, a single-file version with all features bundled:
+
+```bash
+# Generate topology
+python lft_ai_standalone.py generate "Create an SDN topology with 2 hosts and a switch" -o topology.py --local
+
+# Use a specific model
+python lft_ai_standalone.py generate "..." --model deepseek-r1-8b --local
+
+# Visualize live containers
+python lft_ai_standalone.py visualize
+
+# Visualize a topology file (static graph)
+python lft_ai_standalone.py visualize --file topology.py
+
+# Show examples
+python lft_ai_standalone.py examples
 ```
 
 ### Interactive Mode Commands
@@ -219,16 +240,7 @@ Generate LFT topology code from natural language description.
 
 **Returns**: Generated Python code for the LFT topology
 
-##### `generate_and_save(description: str, output_file: str) -> str`
-Generate topology code and save it to a file.
-
-**Parameters**:
-- `description`: Natural language description of the desired topology
-- `output_file`: Path to save the generated code
-
-**Returns**: Path to the saved file
-
-##### `validate_topology(code: str) -> bool`
+##### `validate_generated_code(code: str) -> bool`
 Validate the generated topology code.
 
 **Parameters**:
@@ -391,4 +403,6 @@ For issues and questions:
 
 ---
 
-**Note**: The AI generator is designed to assist with topology creation but should be reviewed before deployment in production environments. 
+**Note**: The AI generator is designed to assist with topology creation but should be reviewed before deployment in production environments.
+
+**Maintainer:** Profissa - UnB
