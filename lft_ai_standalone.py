@@ -2015,9 +2015,9 @@ def _visualize_topology_file(filepath: str):
     )
     # Extract string literal from first positional or name= keyword arg
     name_literal = re.compile(r'["\']([^"\']+)["\']')
-    # Connect patterns: connect(var1, ..., var2, ...) — grab first and last variable names
+    # Connect patterns: caller.connect(target, ...) — capture caller and args
     connect_pattern = re.compile(
-        r'connect\s*\(([^)]+)\)'
+        r'(\w+)\.connect\s*\(([^)]+)\)'
     )
 
     var_to_name = {}
@@ -2036,13 +2036,14 @@ def _visualize_topology_file(filepath: str):
         G.add_node(name, type=node_type.lower())
 
     for match in connect_pattern.finditer(code):
-        args_str = match.group(1)
-        # Extract variable names (skip string literals and method calls)
+        caller = match.group(1)
+        args_str = match.group(2)
+        # Extract variable names from arguments (skip string literals)
         tokens = [t.strip().split('.')[0] for t in args_str.split(',')]
         var_refs = [t for t in tokens if t.isidentifier() and t in var_to_name]
-        # Connect first node to second node found
-        if len(var_refs) >= 2:
-            G.add_edge(var_to_name[var_refs[0]], var_to_name[var_refs[1]])
+        # Connect caller to first variable found in args
+        if caller in var_to_name and var_refs:
+            G.add_edge(var_to_name[caller], var_to_name[var_refs[0]])
 
     if not G.nodes:
         print("No LFT nodes found in the topology file.")
