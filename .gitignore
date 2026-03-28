@@ -1,5 +1,6 @@
 # Virtual Environment
 lft_env/
+/lft_ai/
 lft_venv/
 venv/
 env/

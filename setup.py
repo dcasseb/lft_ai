@@ -54,6 +54,7 @@ setup(
     entry_points={
         'console_scripts': [
             'lft-ai=profissa_lft.cli:main',
+            'lft-gui=lft_gui:main',
         ],
     }
 )
